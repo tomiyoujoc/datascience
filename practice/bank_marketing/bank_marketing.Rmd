@@ -1,0 +1,393 @@
+---
+title: "bank marketing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##目的
+* 新たなキャンペーンを行うという設定で、手持ちのデータからペルソナを設定する
+* 予測モデルを作成し、ROIを算出する
+
+##データの概要を確認
+
+```{r}
+df <- read.csv("data/bank_marketing_train.csv")
+str(df)
+summary(df)
+```
+
+##データ準備
+###yの確認と加工
+```{r}
+y_table <- table(df$y)
+print(y_table)
+no_rate <- y_table[1]/y_table[2] #yesに対するnoの割合
+print(paste("no rate:",no_rate[[1]]))
+
+df$y <- ifelse(df$y == "yes", 1, 0)
+```
+
+###学習データとテストデータの分割
+* データの分割は、yのyesとnoの割合が同等となるように行う。
+```{r}
+set.seed(1234)
+yes_idx <- which(df$y == 1)
+no_idx <- which(df$y == 0)
+
+train_rate <- 0.7
+train_idx <- c(sample(yes_idx, size=length(yes_idx)*train_rate),
+                  sample(no_idx, size=length(no_idx)*train_rate))
+train <- df[train_idx,]
+test <- df[-train_idx,]
+
+train_org <- train
+test_org <- test
+
+print(paste("train size:", nrow(train)))
+print(paste("test size:", nrow(test)))
+
+#この後の可視化で使いやすいよう、trainに対しyesとnoに分けたデータも保持しておく
+train_yes <- train[train$y == 1, ]
+train_no <- train[train$y == 0, ]
+
+test_yes <- test[test$y == 1, ]
+test_no <- test[test$y == 0, ]
+
+#yesに対するnoの割合
+print(paste("train's no rate:", nrow(train_no)/nrow(train_yes)))
+print(paste("test's no rate:", nrow(test_no)/nrow(test_yes)))
+
+#不要なので削除しておく
+rm(test_yes)
+rm(test_no)
+```
+
+##データを確認する
+###欠損の確認
+```{r}
+sapply(train, function(x) any(is.na(train$x)))
+```
+
+NA値は存在しない。
+
+###age
+```{r}
+boxplot(train_yes$age, train_no$age, xlab= "y", ylab="age", names=c("yes", "no"))
+```
+
+ageによるyes,noの傾向の違いはあまりない模様。
+
+###job
+```{r}
+barplot_by_factor <- function(x){
+  cross_table <- table(train[, x], train$y)
+  cross_table <- cross_table/(cross_table[,1]+cross_table[,2])
+  cross_table <- cross_table[order(cross_table[,2]),]
+  barplot(t(cross_table), horiz = TRUE, las=1,
+          legend.text=c("no", "yes"),
+          args.legend = list(x="bottomleft"))
+  #return(cross_table)
+  return(table(train[, x], train$y))
+}
+```
+```{r}
+barplot_by_factor("job")
+```
+
+studentとretiredは、ほかのjobよりもyesの割合が高くなっている。
+
+##marital
+```{r}
+barplot_by_factor("marital")
+```
+
+singleの成約率は比較的高い模様。
+
+##education
+```{r}
+barplot_by_factor("education")
+```
+
+##default
+```{r}
+barplot_by_factor("default")
+```
+
+##housing
+```{r}
+barplot_by_factor("housing")
+```
+
+##loan
+```{r}
+barplot_by_factor("loan")
+```
+
+##contact
+```{r}
+barplot_by_factor("contact")
+```
+
+携帯電話でアクセス可能な人の成約率は高い模様。
+
+##month
+```{r}
+barplot_by_factor("month")
+```
+
+monthは予測に寄与しそうである。
+
+##day_of_week
+```{r}
+barplot_by_factor("day_of_week")
+```
+
+##poutcome
+```{r}
+barplot_by_factor("poutcome")
+```
+
+successは、予測にかなり寄与しそう。
+
+###pdays
+```{r}
+hist(train$pdays)
+```
+
+###pdays
+```{r}
+hist(train_no$pdays, col="#ff00ff40")
+hist(train_yes$pdays,col="#0000ff40", add=TRUE)
+```
+
+###emp.var.rate 
+```{r}
+hist(train_no$emp.var.rate, col="#ff00ff40")
+hist(train_yes$emp.var.rate,col="#0000ff40", add=TRUE)
+```
+
+```{r}
+emp_yes <- table(train_yes$emp.var.rate)
+print("yes")
+emp_yes
+emp_no <- table(train_no$emp.var.rate)
+print("no")
+emp_no
+print("yes/no")
+emp_yes/emp_no
+```
+
+###cons.price.idx
+```{r}
+hist(train_no$cons.price.idx, col="#ff00ff40")
+hist(train_yes$cons.price.idx,col="#0000ff40", add=TRUE)
+```
+
+###cons.price.idx
+```{r}
+hist(train_no$cons.price.idx, col="#ff00ff40")
+hist(train_yes$cons.price.idx,col="#0000ff40", add=TRUE)
+```
+
+###cons.conf.idx
+```{r}
+hist(train_no$cons.conf.idx, col="#ff00ff40")
+hist(train_yes$cons.conf.idx,col="#0000ff40", add=TRUE)
+```
+
+###euribor3m
+```{r}
+hist(train_no$euribor3m, col="#ff00ff40")
+hist(train_yes$euribor3m,col="#0000ff40", add=TRUE)
+```
+
+###nr.employed
+```{r}
+hist(train_no$nr.employed, col="#ff00ff40")
+hist(train_yes$nr.employed,col="#0000ff40", add=TRUE)
+```
+
+##特徴量の作成
+* yに寄与しそうなファクタは抽出して新たなカラムにする
+  * unknownは解釈が難しいので、存在するカラムは同様に分割
+  * （後述のロジスティック回帰を繰り返す中で見つけた特徴もある）
+```{r}
+make_new_feature <- function(data){
+  #job
+  data["is_student"] <- ifelse(data["job"] == "student", 1, 0)
+  data["is_retired"] <- ifelse(data["job"] == "retired", 1, 0)
+  
+  #marital
+  data["is_single"] <- ifelse(data["marital"] == "single", 1, 0)
+  
+  #education
+  data["education_high"] <- ifelse( data["education"] == "university.degree", 1, 0)
+  data[data["education"] == "high.school", "education_high"] <- 1
+  data[data["education"] == "professional.course", "education_high"] <- 1
+  
+  #default
+  data["default_no"] <- ifelse(data["default"] == "no", 1, 0)
+  
+  #housing
+  data["housing_no"] <- ifelse(data["housing"] == "no", 1, 0)
+  
+  #loan
+  data["loan_yes"] <- ifelse(data["loan"] == "yes", 1, 0)
+  
+  #poutcome
+  data["poutcome_success"] <- ifelse(data["poutcome"] == "success", 1, 0)
+  
+  #month
+  #monthmar  < 2e-16 ***
+  #monthoct 4.17e-11 ***
+  #monthaug 3.94e-09 ***
+  #monthnov 7.06e-07 ***
+  #monthjun 2.15e-07 ***
+  #monthjul 1.46e-09 ***
+  #monthdec 1.28e-06 ***
+  data["monthmar"] <- ifelse(data["month"] == "mar", 1, 0)
+  data["monthoct"] <- ifelse(data["month"] == "oct", 1, 0)
+  data["monthaug"] <- ifelse(data["month"] == "aug", 1, 0)
+  data["monthnov"] <- ifelse(data["month"] == "nov", 1, 0)
+  data["monthjun"] <- ifelse(data["month"] == "jun", 1, 0)
+  data["monthjul"] <- ifelse(data["month"] == "jul", 1, 0)
+  data["monthdec"] <- ifelse(data["month"] == "dec", 1, 0)
+  data["monthmay"] <- ifelse(data["month"] == "may", 1, 0)
+  
+  return(data)
+}
+
+train <- make_new_feature(train)
+```
+##モデル作成
+まずあまり考えずロジスティック回帰する
+```{r}
+model0 <- glm(y~., data=train, family="binomial")
+summary(model0)
+AIC(model0) 
+```
+
+未来のデータdurationとcampaignを外してロジスティック回帰する  
+(未来のデータ(特にduration)が含まれると精度は高くなることが分かる)
+```{r}
+model1 <- glm(y~.-duration-campaign,
+               data=train, family="binomial")
+summary(model1)
+AIC(model1)
+
+```
+
+新たに作成した特徴量の、元の特徴量は除外してモデルを作成
+```{r}
+model2 <- glm(y~.-duration-campaign-job-marital-education
+              -default-housing-loan-poutcome,
+               data=train, family="binomial")
+summary(model2)
+AIC(model2)
+```
+
+step関数で最適化する
+```{r}
+op_model2 <- step(model2)
+summary(op_model2)
+AIC(op_model2)
+```
+
+得られた結果を基に改めてモデルを構築した。  
+day_of_weekは重要度が高くないように見受けられる（可視化の時点でも隔たりがほぼなかった）ため除外。
+```{r}
+model3 <- glm(y~contact +
+                monthmar+ monthoct+ monthaug+ monthnov+
+                monthjun+ monthjul+ monthdec+ monthmay+
+                pdays + previous + 
+                emp.var.rate + cons.price.idx +
+                is_student + is_retired + 
+                is_single + default_no,
+              data=train, family="binomial")
+summary(model3)
+AIC(model3)
+exp(model3$coefficients)
+```
+
+評価用の関数を定義
+```{r}
+#ROI = 成約数*2000 -架電数*500
+calc_ROI <- function(conf_mat){
+  if(!all(dim(conf_mat) == c(2,2))){
+    return(0)
+  }
+  cv_cnt <- conf_mat[4]
+  attack_cnt <- conf_mat[3] + conf_mat[4]
+  roi <- cv_cnt*2000 - attack_cnt*500
+  return(roi)
+}
+
+#予測結果（確率）に対し、1に分類するための閾値を探す
+optimize_threshold <- function(model, data, type){
+  score <- predict(model, data, type = type)
+  #hist(score)
+  
+  max_threshold <- 0
+  max_ROI <- -Inf
+  for(th in c(1:100)/100) {
+    ypred_flg <- ifelse(th < score, 1, 0)
+    conf_mat <- table(data$y, ypred_flg)
+    ROI <- calc_ROI(conf_mat)
+    #print(paste(th, ":", ROI), quote = FALSE)
+    if(ROI > max_ROI){
+      max_ROI <- ROI
+      max_threshold <- th
+    }
+  }
+  return(max_threshold)
+}
+```
+
+閾値をサーチする
+```{r}
+optimized_threshold <- optimize_threshold(model3, train, "response")
+optimized_threshold
+```
+
+##testデータを使ってモデルを評価する
+```{r}
+best_model <- model3 #ロジスティック回帰
+print_predict <- function(model, data, type, threshold){
+  score <- predict(model, data, type = type)
+  ypred_flg <- ifelse(threshold < score, 1, 0)
+  conf_mat <- table(data$y, ypred_flg)
+  print("confusion matrix")
+  print(conf_mat)
+  #hist(score)
+  print(paste("ROI:", calc_ROI(conf_mat)))
+}
+```
+
+```{r}
+test <- make_new_feature(test)
+print_predict(best_model, test, "response", 0.2)
+```
+
+ROIは154000円。ひとまず黒字のため良しとする。  
+
+##ペルソナ設定
+```{r}
+summary(best_model)
+exp(best_model$coefficients) #オッズ
+```
+上記より  
+
+* リタイア層
+* 滞納がnoな人
+* 独身者
+
+解釈しにくかった変数（けど効きそうなもの）  
+
+  * monthがmarやoctの場合、成約率が高くなりそう
+  * contactがcellularの場合、成約率が高くなりそう
+  * previousが大きい場合？成約率が高くなりそう
+  * pdaysは小さいほど、成約率が高くなりそう
+  * 経済指標emp.var.rate, cons.price.idxも効きそう
