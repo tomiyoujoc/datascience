@@ -4,6 +4,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+def __plot_large_data(data, x, ax=None):
+    if ax is None:
+        ax = plt.subplot(111)
+    ax.text(0.25, 0.4, "{}\nunique values".format(len(data[x].unique())), fontsize=18)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel(x)
+
 def __plot_axc_distribution(data, x, hue, ax=None):
     hue_unique_data = data[hue].unique()
     for h in hue_unique_data:
@@ -25,10 +33,14 @@ def __plot_axa_distribution(data, x, y, ax=None):
 def __plot_cxa_distribution(data, x, y, ax=None):
     if len(data[x].unique()) <= 20:
         sns.boxplot(x=x, y=y, data=data, ax=ax)
+    else:
+        __plot_large_data(data, x, ax)
 
 def __plot_cxc_distribution(data, x, hue, ax=None):
     if len(data[x].unique()) <= 20:
         sns.countplot(x=x, hue=hue, data=data, ax=ax)
+    else:
+        __plot_large_data(data, x, ax)
 
 def __is_analog_data(data):
     if data.dtype == np.float:
@@ -53,7 +65,10 @@ def plot_distribution(data, x, y=None, ax=None):
                 ax.set_xlabel(x)
                 ax.set_ylabel("count")
         else:
-            sns.countplot(x=x, data=data, ax=ax)
+            if len(data[x].unique()) <= 20:
+                sns.countplot(x=x, data=data, ax=ax)
+            else:
+                __plot_large_data(data, x, ax)
     else:
         #2変数
         if __is_analog_data(data[x]):
