@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
+import scipy.stats as stats
+import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -81,6 +83,10 @@ def plot_distribution(data, x, y=None, ax=None):
                 __plot_cxa_distribution(data, x, y, ax)
             else:
                 __plot_cxc_distribution(data, x, y, ax)
+    if ax is not None:
+        ax.set_xticks(rotation=80)
+    else:
+        plt.xticks(rotation=80)
 
 def plot_all_distribution(data, y=None):
     NCOLS = 3
@@ -171,3 +177,16 @@ def plot_roc_curve(y_true, y_before_pred):
     
     #AUC
     print("AUC:{:.2f}".format(roc_auc_score(y_true, y_before_pred)))
+    
+def plot_qqplot(data, x):
+#    stats.probplot(data[x], dist="norm", plot=plt)
+    sm.qqplot(data[x], line="q")
+
+def plot_arrays_line(array_likes, columns=None, remove_legend=False):
+    temp = pd.DataFrame(array_likes)
+    if columns is not None:
+        temp.columns = columns
+    ax = temp.T.plot()
+    if remove_legend:
+        ax.remove_legend()
+    del temp
