@@ -1,0 +1,36 @@
+---
+title: "ggplot - bar plot"
+output: html_notebook
+---
+
+単一の棒グラフ
+```{r}
+library("ggplot2")
+
+iris %>%
+  group_by(Species) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x=Species, y=count)) +
+  geom_bar(stat="identity") +
+  theme(axis.text = element_text(angle=90, hjust=1))
+```
+
+複数の棒グラフ
+```{r}
+iris.long <- iris %>%
+  gather(key=feature, value=value, -Species)
+
+iris.long %>%
+  ggplot(aes(x=feature, y=value, fill=Species)) +
+  geom_bar(stat="identity", position="dodge") + 
+  facet_wrap(~ Species, ncol = 3, scales = "free") +
+  theme(axis.text = element_text(angle=90, hjust=1))
+```
+
+```{r}
+iris.long %>%
+  ggplot(aes(x=Species, y=value, fill=Species)) +
+  geom_bar(stat="identity", position="dodge") + 
+  facet_wrap(~ feature, ncol = 2, scales = "free") 
+
+```
