@@ -84,7 +84,8 @@ def plot_distribution(data, x, y=None, ax=None):
             else:
                 __plot_cxc_distribution(data, x, y, ax)
     if ax is not None:
-        ax.set_xticks(rotation=80)
+#        ax.set_xticks(rotation=80)
+        pass
     else:
         plt.xticks(rotation=80)
 
