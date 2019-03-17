@@ -1,6 +1,7 @@
 # Code storage space for Data Science
 ## study
 * データサイエンス分野についての学習跡
+* スクール（DataMix）で学んだ内容も一部掲載
 * 使用した教材は主に下記
 ![Bookshelf](./.readme_resource/Bookshelf.jpg "Bookshelf")
 
